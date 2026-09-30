@@ -81,14 +81,16 @@ func leaseMutationHandler(runtime *Runtime, heartbeat bool) http.HandlerFunc {
 		var result model.Lease
 		if heartbeat {
 			result, err = runtime.Leases.Heartbeat(r.Context(), input.ChamberID, vesselID, input.Owner, input.Token, ttl)
-			if err == nil && !runtime.Leases.Authorized(vesselID, input.Owner, input.Token) {
-				err = errors.New("renewed lease is not authorized for admission")
-			}
 		} else {
 			result, err = runtime.Leases.Assign(r.Context(), input.ChamberID, vesselID, input.Owner, ttl)
 		}
 		if err != nil {
 			writeError(w, http.StatusConflict, err)
+			return
+		}
+		// Confirm the journaled lease is exactly what admission will honor.
+		if !runtime.Leases.Authorized(vesselID, input.Owner, result.FencingToken) {
+			writeError(w, http.StatusConflict, errors.New("lease is not authorized for admission"))
 			return
 		}
 		writeJSON(w, http.StatusOK, result)

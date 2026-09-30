@@ -4,7 +4,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/wyw14/cry-96/internal/model"
 )
 
@@ -14,6 +13,9 @@ type ExpiredLease struct {
 }
 
 // Sweeper discovers expired leases without changing the fencing sequence.
+// Reassignment is intentionally not part of the sweeper: replacing a live
+// lease requires the current owner's fencing token and goes through
+// Service.Takeover, which journals the transfer atomically.
 type Sweeper struct {
 	registry *Registry
 	now      func() time.Time
@@ -38,12 +40,4 @@ func (s *Sweeper) Expired() []ExpiredLease {
 		return result[i].Lease.VesselID.String() < result[j].Lease.VesselID.String()
 	})
 	return result
-}
-
-func (s *Sweeper) Reassign(vesselID uuid.UUID, previousOwner, newOwner string, ttl time.Duration) (model.Lease, error) {
-	current, ok := s.registry.Get(vesselID)
-	if ok && current.Owner == previousOwner && current.Active(s.now()) {
-		return model.Lease{}, ErrLeaseStillActive
-	}
-	return s.registry.Assign(vesselID, newOwner, ttl, s.now())
 }
